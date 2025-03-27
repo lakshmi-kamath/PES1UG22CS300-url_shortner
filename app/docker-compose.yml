@@ -1,0 +1,14 @@
+services:
+  url-shortener:
+    build: .
+    ports:
+      - "5001:5000"
+    depends_on:
+      - redis
+    environment:
+      - FLASK_DEBUG=0  # Replace deprecated FLASK_ENV
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
