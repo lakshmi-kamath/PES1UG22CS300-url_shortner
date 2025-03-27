@@ -58,6 +58,81 @@ test_redirection() {
         exit 1
     fi
 }
+# New function to test pod deletion resilience
+test_pod_deletion_resilience() {
+    local base_url="$1"
+    
+    echo "=== Pod Deletion Resilience Test ==="
+    
+    # Get initial pod count
+    initial_pod_count=$(kubectl get pods -l app=url-shortener | grep Running | wc -l)
+    echo "Initial pod count: $initial_pod_count"
+    
+    # Get current pods
+    pods=($(kubectl get pods -l app=url-shortener -o jsonpath='{.items[*].metadata.name}'))
+    
+    if [ ${#pods[@]} -eq 0 ]; then
+        log_error "No URL Shortener pods found"
+    fi
+    
+    # Select a pod to delete
+    pod_to_delete=${pods[0]}
+    echo "Selected pod for deletion: $pod_to_delete"
+    
+    # Use a previously created URL for resilience testing
+    original_long_url="https://www.example.com/very/long/url/that/needs/shortening"
+    pre_deletion_short_url=$(create_short_url "$original_long_url" "$base_url")
+    echo "Created pre-deletion short URL: $pre_deletion_short_url"
+    
+    # Delete the selected pod
+    kubectl delete pod "$pod_to_delete"
+    
+    # Wait and verify pod replacement
+    echo "Waiting for pod replacement..."
+    
+    # Wait for new pod to be in Running state (with timeout)
+    timeout=180  # 3 minutes
+    while [ $timeout -gt 0 ]; do
+        current_pod_count=$(kubectl get pods -l app=url-shortener | grep Running | wc -l)
+        
+        if [ "$current_pod_count" -ge "$initial_pod_count" ]; then
+            echo "Pod replaced successfully"
+            break
+        fi
+        
+        sleep 5
+        ((timeout-=5))
+    done
+    
+    # Verify pod replacement
+    if [ $timeout -le 0 ]; then
+        log_error "Pod replacement timed out after 3 minutes"
+    fi
+    
+    # Verify application functionality after pod deletion
+    echo "Checking application responsiveness..."
+    
+    # Try creating a new short URL using another existing URL
+    new_long_url="https://theuselessweb.com/very/long/url/that/needs/shortening"
+    post_deletion_short_url=$(create_short_url "$new_long_url" "$base_url")
+    echo "Created post-deletion short URL: $post_deletion_short_url"
+    
+    # Verify original short URL still works
+    echo "Verifying original short URL redirection..."
+    test_redirection "$pre_deletion_short_url" "$original_long_url" "$base_url"
+    
+    # Verify new short URL works
+    echo "Verifying new short URL redirection..."
+    test_redirection "$post_deletion_short_url" "$new_long_url" "$base_url"
+    
+    echo "✅ Pod Deletion Resilience Test Passed:"
+    echo "   - Original pod deleted successfully"
+    echo "   - Replacement pod created"
+    echo "   - Application remained responsive"
+    echo "   - Previous short URLs still work"
+    echo "   - New short URLs can be created"
+}
+
 
 # Prerequisite checks
 command -v kubectl &> /dev/null || log_error "kubectl is not installed"
@@ -85,6 +160,10 @@ URLS=(
 
 # Run tests
 echo "Starting URL Shortener Redirection Tests in Kubernetes"
+
+# Check pods
+echo "Verifying services..."
+kubectl get pods
 
 # Store short URLs
 declare -a SHORT_URLS=()
@@ -117,5 +196,14 @@ kubectl rollout status deployment/redis-deployment
 # Check services
 echo "Verifying services..."
 kubectl get services
+
+# Add Pod Deletion Resilience Test
+echo -e "\n===== Pod Deletion Resilience Test ====="
+test_pod_deletion_resilience "$BASE_URL"
+
+# Check pods
+echo "Verifying services..."
+kubectl get pods
+
 
 echo -e "\nTesting complete. ✨"
