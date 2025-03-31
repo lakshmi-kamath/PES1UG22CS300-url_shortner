@@ -5,7 +5,7 @@ metadata:
   labels:
     app: url-shortener
 spec:
-  replicas: 3 # Changed from 3 to 2 as our HPA will handle scaling with minReplicas: 2
+  replicas: 3
   selector:
     matchLabels:
       app: url-shortener
@@ -13,6 +13,10 @@ spec:
     metadata:
       labels:
         app: url-shortener
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5000"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
       - name: url-shortener
@@ -26,10 +30,10 @@ spec:
             name: url-shortener-secrets
         resources:
           requests:
-            cpu: 100m  # Increased from 100m to better measure CPU usage
+            cpu: 100m
             memory: 128Mi
           limits:
-            cpu: 300m  # Increased from 250m
+            cpu: 300m
             memory: 256Mi
         readinessProbe:
           httpGet:
