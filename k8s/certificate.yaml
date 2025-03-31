@@ -1,0 +1,13 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: shorturl-tls
+  namespace: default
+spec:
+  secretName: shorturl-tls-secret
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  commonName: shorturl.local
+  dnsNames:
+    - shorturl.local
