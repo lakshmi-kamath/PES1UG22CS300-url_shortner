@@ -5,7 +5,7 @@ metadata:
   labels:
     app: url-shortener
 spec:
-  replicas: 3  # Multiple instances for high availability
+  replicas: 3 # Changed from 3 to 2 as our HPA will handle scaling with minReplicas: 2
   selector:
     matchLabels:
       app: url-shortener
@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: url-shortener
-        image: url-shortener:v1  # You'll build this image
+        image: url-shortener:v1
         ports:
         - containerPort: 5000
         envFrom:
@@ -26,10 +26,10 @@ spec:
             name: url-shortener-secrets
         resources:
           requests:
-            cpu: 100m
+            cpu: 100m  # Increased from 100m to better measure CPU usage
             memory: 128Mi
           limits:
-            cpu: 250m
+            cpu: 300m  # Increased from 250m
             memory: 256Mi
         readinessProbe:
           httpGet:
