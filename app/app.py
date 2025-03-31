@@ -4,9 +4,30 @@ import random
 from flask import Flask, request, redirect, jsonify
 import redis
 import validators
-
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+import time
 app = Flask(__name__)
 
+REQUEST_COUNT = Counter(
+    'url_shortener_request_count', 
+    'App Request Count', 
+    ['app_name', 'method', 'endpoint', 'http_status']
+)
+REQUEST_LATENCY = Histogram(
+    'url_shortener_request_latency_seconds', 
+    'Request latency in seconds', 
+    ['app_name', 'endpoint']
+)
+URL_CREATION_COUNT = Counter(
+    'url_shortener_creation_count', 
+    'URL Creation Count', 
+    ['app_name']
+)
+URL_REDIRECT_COUNT = Counter(
+    'url_shortener_redirect_count', 
+    'URL Redirect Count', 
+    ['app_name']
+)
 # Get Redis host from environment variable, default to 'redis'
 REDIS_HOST = os.environ.get('REDIS_HOST', 'redis')
 
@@ -38,6 +59,24 @@ def generate_short_url(length=6):
         # Ensure the generated short URL is unique
         if not redis_client.exists(f"url:{short_url}"):
             return short_url
+
+@app.before_request
+def before_request():
+    request.start_time = time.time()
+
+@app.after_request
+def after_request(response):
+    request_latency = time.time() - request.start_time
+    REQUEST_LATENCY.labels('url_shortener', request.path).observe(request_latency)
+    REQUEST_COUNT.labels('url_shortener', request.method, request.path, response.status_code).inc()
+    return response
+
+# Add Prometheus metrics endpoint
+@app.route('/metrics')
+def metrics():
+    return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}
+
+
 
 @app.route('/shorten', methods=['POST'])
 def shorten_url():
@@ -72,6 +111,9 @@ def shorten_url():
     # Map original URL to short URL for quick lookup
     redis_client.set(f"original:{long_url}", short_url)
     
+    # Increment URL creation metric
+    URL_CREATION_COUNT.labels('url_shortener').inc()
+    
     return jsonify({
         "short_url": short_url,
         "original_url": long_url
@@ -87,10 +129,11 @@ def redirect_to_url(short_url):
     if original_url:
         # Decode and redirect to the original URL
         decoded_url = original_url.decode('utf-8')
+        # Increment URL redirect metric
+        URL_REDIRECT_COUNT.labels('url_shortener').inc()
         return redirect(decoded_url)
     
     return jsonify({"error": "URL not found"}), 404
-
 @app.route('/', methods=['GET'])
 def home():
     """
